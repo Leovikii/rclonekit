@@ -1,0 +1,30 @@
+{
+  "name": "rclonekit",
+  "version": "0.1.0-dev.1",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "typecheck": "tsc --noEmit",
+    "build": "pnpm typecheck && vite build",
+    "test": "node --test tests/model.test.ts tests/demo.test.ts",
+    "test:ui": "pnpm build && playwright test",
+    "check": "pnpm typecheck && pnpm test && pnpm test:ui"
+  },
+  "dependencies": {
+    "@mantine/core": "9.7.3",
+    "@mantine/hooks": "9.7.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.4"
+  },
+  "license": "GPL-3.0-or-later"
+}
