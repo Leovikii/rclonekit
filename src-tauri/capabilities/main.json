@@ -1,0 +1,5 @@
+{
+  "identifier": "main-read-environment",
+  "windows": ["main"],
+  "permissions": ["allow-read-environment", "allow-install-components", "allow-list-mount-configs", "allow-prepare-mount", "allow-remove-mount-config"]
+}

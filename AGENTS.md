@@ -1,10 +1,11 @@
 # RcloneKit 开发约定
 
-先读 [设计入口](docs/README.md)、[原型方案](docs/design/prototype-plan.md)、[界面规范](docs/design/ui-guidelines.md)与[开发交接](docs/development/0.1.0-dev.1.md)，检查 git status，保留用户改动。当前为前端开发版，使用独立模拟接口，尚无已验证系统集成。
+先读 [设计入口](docs/README.md)、[原型方案](docs/design/prototype-plan.md)、[界面规范](docs/design/ui-guidelines.md)、[首个开发版交接](docs/development/0.1.0-dev.1.md)与 [当前开发记录](docs/development/windows-alpha.md)，检查 git status，保留用户改动。网页使用独立模拟接口，桌面端通过 WinGet 检测和安装组件，并管理 WebDAV 配置。
 
 - UI 延续 MpvKit 的两页、Mantine 与固定紫色规范；主页用挂载卡片和末尾新增卡片。常驻状态只有已挂载/未挂载，复杂检查留后台，操作失败就近反馈。正式开发先读官方组件 API 并核对固定依赖声明，不复制示意控件作为实现。
 - 前端只处理交互与展示；Rust 业务与 platform 模块分离。盘符不是挂载身份；Windows 服务生命周期不能依赖 GUI 存活。
-- 不自动强杀、不删除待上传缓存，不以服务运行冒充远端健康；安全停止和服务权限按方案先验证。
+- Windows 组件的检测、安装、升级和卸载统一交由 WinGet。使用 `winget` 源及精确包 ID `Rclone.Rclone`、`WinFsp.WinFsp`，沿用默认版本、架构、作用域与安装器选择。禁止自建下载或部署路径、固定安装包版本或哈希、携带或复制运行时、修改或自行构建上游组件。WinGet 不可用时提示检查系统的应用安装程序。
+- 只用官方支持的 CLI、RC 和平台接口，优先省略参数以继承组件默认值。确有需求且经实测的覆盖须写明依据。官方能力或权限边界无法验证时延期。禁止自动强杀或删除待上传缓存，服务运行状态不可当作远端健康。
 - 普通检查不修改真实服务、注册表、凭据、缓存或远端文件；集成测试使用隔离目标。日志脱敏、凭据不入库。
 - 以当前用户请求为准；不继承参考项目的授权或测试结论。未明确要求时不启动多 agent、多工作树或持续自动化。
 - 中文开发文档，英文标识符，UTF-8/LF。按改动风险做最小必要验证，交接区分设计目标、实际实现和未测事项。

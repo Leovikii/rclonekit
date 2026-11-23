@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import type { EnvironmentSnapshot } from '../../src/api.ts';
 
 const x = (page: Page) => page.getByRole('article', { name: 'X: · dav.example.com', exact: true });
 const y = (page: Page) => page.getByRole('article', { name: 'Y: · nas.example.com', exact: true });
@@ -121,6 +122,149 @@ test('reading failure has retry and never reports unmounted', async ({ page }) =
   await page.getByRole('button', { name: '重试', exact: true }).click();
   await expect(x(page).getByRole('status')).toHaveText('已挂载');
 });
+test('desktop reads and refreshes the Windows environment', async ({ page }) => {
+  await page.addInitScript(() => {
+    let checks = 0;
+    Object.assign(window, {
+      isTauri: true,
+      __TAURI_INTERNALS__: {
+        async invoke(command: string) {
+          if (command === 'list_mount_configs') return [];
+          if (command !== 'read_environment') throw new Error(`Unexpected command: ${command}`);
+          if (++checks === 1) throw 'drive_query_failed';
+          return {
+            components: [
+              { id: 'rclone', status: 'unknown' },
+              { id: 'winfsp', status: checks === 2 ? 'notDetected' : 'unknown' },
+              { id: 'winget', status: checks === 2 ? 'detected' : 'notDetected' },
+            ],
+            availableDrives: checks === 2 ? ['Z:', 'D:'] : [],
+            installCandidates: [],
+          };
+        },
+      },
+    });
+  });
+  await page.goto('/?scenario=ready');
+  await expect(page.getByText('Windows 开发版', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('示例场景')).toHaveCount(0);
+  await expect(page.getByRole('alert')).toContainText('暂时无法读取系统环境');
+  await page.getByRole('button', { name: '重试', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await expect(page.getByText('rclone', { exact: true })).toBeVisible();
+  await expect(page.getByText('无法确认', { exact: true })).toBeVisible();
+  await expect(page.getByText('WinGet 未能确认组件安装状态，请重新检测。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '安装所需组件', exact: true })).toHaveCount(0);
+  await expect(page.getByText('Z: · D:', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '重新检测', exact: true }).click();
+  await expect(page.getByText('没有可用盘符', { exact: true })).toBeVisible();
+  await expect(page.getByText('WinGet 无法使用。请检查 Windows 的应用安装程序，然后重新检测。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '安装所需组件', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: '返回网络驱动器', exact: true }).click();
+  await expect(page.getByRole('article')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '添加网络驱动器', exact: true })).toBeVisible();
+});
+test('desktop installs missing components and retries only WinFsp after a partial failure', async ({ page }) => {
+  await page.addInitScript(() => {
+    let attempts = 0;
+    Object.assign(window, {
+      isTauri: true,
+      __TAURI_INTERNALS__: {
+        async invoke(command: string) {
+          if (command === 'list_mount_configs') return [];
+          if (command === 'install_components') {
+            if (++attempts === 1) throw 'winfsp_install_failed';
+            return { restartRequired: true };
+          }
+          if (command !== 'read_environment') throw new Error(`Unexpected command: ${command}`);
+          return {
+            components: [
+              { id: 'rclone', status: attempts ? 'detected' : 'notDetected' },
+              { id: 'winfsp', status: 'notDetected' },
+              { id: 'winget', status: 'detected' },
+            ],
+            availableDrives: ['Z:'],
+            installCandidates: attempts ? ['winfsp'] : ['rclone', 'winfsp'],
+          };
+        },
+      },
+    });
+  });
+  await page.goto('/');
+  const dialog = await installDialog(page);
+  await expect(dialog.getByText('rclone、WinFsp', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: '安装', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('WinGet 未能完成 WinFsp 安装');
+  await expect(dialog.getByText('WinFsp', { exact: true })).toBeVisible();
+  await dialog.getByRole('button', { name: '重试', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('重启');
+  await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
+  await expect(page.getByRole('button', { name: '安装所需组件', exact: true })).toHaveCount(0);
+  await expect(page.getByText('已检出', { exact: true })).toHaveCount(2);
+});
+test('desktop edits and deletes only configurations with confirmed unmounted state', async ({ page }) => {
+  await page.addInitScript(() => {
+    const configurations: EnvironmentSnapshot['configurations'] = [{
+      id: 'unknown-mount', connection: { kind: 'webdav', url: 'https://nas.example.com/dav/', username: '' },
+      target: { kind: 'driveLetter', value: 'Y:' }, mounted: null, readOnly: false,
+    }];
+    let removalAttempts = 0;
+    Object.assign(window, {
+      isTauri: true,
+      __TAURI_INTERNALS__: {
+        async invoke(command: string, parameters?: { id?: string; input?: { connection: { kind: 'webdav'; url: string; username: string }; drive: string; readOnly: boolean } }) {
+          if (command === 'read_environment') return { components: [], availableDrives: ['Y:', 'Z:'], installCandidates: [] };
+          if (command === 'list_mount_configs') return structuredClone(configurations);
+          if (command === 'prepare_mount' && parameters?.input) {
+            const { connection, drive, readOnly } = parameters.input;
+            const config = {
+              id: 'saved-mount', connection: { kind: connection.kind, url: connection.url, username: connection.username },
+              target: { kind: 'driveLetter' as const, value: drive }, mounted: false, readOnly,
+            };
+            if (parameters.id === 'saved-mount') configurations[1] = config;
+            else if (parameters.id === undefined) configurations.push(config);
+            else throw 'not_found';
+            return;
+          }
+          if (command === 'remove_mount_config' && parameters?.id === 'saved-mount') {
+            if (++removalAttempts === 1) throw 'status_unavailable';
+            configurations.pop();
+            return;
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        },
+      },
+    });
+  });
+  await page.goto('/');
+  const unknown = page.getByRole('article', { name: 'Y: · nas.example.com', exact: true });
+  await expect(unknown.getByRole('alert')).toContainText('暂时无法读取挂载状态');
+  await expect(unknown.getByRole('status')).toHaveCount(0);
+  await expect(unknown.getByRole('button', { name: '更多操作 Y:' })).toHaveCount(0);
+  await unknown.getByRole('button', { name: '重试', exact: true }).click();
+  await page.getByRole('button', { name: '添加网络驱动器', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('盘符')).toHaveValue('Z:');
+  await dialog.getByRole('textbox', { name: 'WebDAV 地址', exact: true }).fill('https://new.example.com/dav/');
+  await dialog.getByRole('button', { name: '保存配置', exact: true }).click();
+  const saved = page.getByRole('article', { name: 'Z: · new.example.com', exact: true });
+  await expect(saved.getByRole('status')).toHaveText('未挂载');
+  await expect(saved.getByRole('button', { name: '打开', exact: true })).toHaveCount(0);
+  await saved.getByRole('button', { name: '更多操作 Z:', exact: true }).click();
+  await page.getByRole('menuitem', { name: '编辑', exact: true }).click();
+  await expect(dialog.getByLabel('盘符')).toHaveValue('Z:');
+  await dialog.getByRole('textbox', { name: 'WebDAV 地址', exact: true }).fill('https://edited.example.com/dav/');
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  const edited = page.getByRole('article', { name: 'Z: · edited.example.com', exact: true });
+  await edited.getByRole('button', { name: '更多操作 Z:', exact: true }).click();
+  await page.getByRole('menuitem', { name: '删除配置', exact: true }).click();
+  const confirm = dialog.getByRole('button', { name: '删除配置', exact: true });
+  await confirm.click();
+  await expect(dialog.getByRole('alert')).toContainText('暂时无法读取挂载状态');
+  await confirm.click();
+  await expect(edited).toHaveCount(0);
+  await expect(unknown).toBeVisible();
+});
 test('one card operation does not prevent an unrelated card operation', async ({ page }) => {
   await page.goto('/');
   await x(page).getByRole('button', { name: '断开', exact: true }).click();
@@ -193,7 +337,11 @@ test('long addresses, menu keyboard and high contrast preserve usable controls',
   await page.setViewportSize({ width: 480, height: 600 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('button', { name: '更多操作 Y:', exact: true }).focus();
-  await page.keyboard.press('Enter'); await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await expect.poll(() => menu.evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: '编辑', exact: true })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: '更多操作 Y:', exact: true })).toBeFocused();

@@ -9,8 +9,23 @@ export type Snapshot = {
   restartRequired: boolean;
 };
 
-// The desktop implementation will invoke Rust commands; pages use no OS or rclone APIs.
-export interface Backend {
+export type EnvironmentSnapshot = {
+  components: { id: 'rclone' | 'winfsp' | 'winget'; status: 'detected' | 'notDetected' | 'unknown' }[];
+  availableDrives: string[];
+  installCandidates: Component['id'][];
+  configurations: (Omit<Mount, 'mounted'> & { mounted: boolean | null })[];
+};
+
+export interface DesktopBackend {
+  mode: 'desktop';
+  snapshot(): Promise<EnvironmentSnapshot>;
+  prepare(draft: Draft, id?: string): Promise<void>;
+  remove(id: string): Promise<void>;
+  installMissing(): Promise<{ restartRequired: boolean }>;
+}
+
+export interface DemoBackend {
+  mode: 'demo';
   snapshot(): Promise<Snapshot>;
   add(draft: Draft): Promise<Mount>;
   update(id: string, draft: Draft): Promise<Mount>;
@@ -20,3 +35,5 @@ export interface Backend {
   installMissing(): Promise<void>;
   openMount(id: string): Promise<void>;
 }
+
+export type Backend = DemoBackend | DesktopBackend;

@@ -1,12 +1,13 @@
 {
   "name": "rclonekit",
-  "version": "0.1.0-dev.1",
+  "version": "0.1.0-dev.2",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.25.0",
   "engines": { "node": ">=24.0.0" },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:desktop": "tauri dev",
     "typecheck": "tsc --noEmit",
     "build": "pnpm typecheck && vite build",
     "test": "node --test tests/model.test.ts tests/demo.test.ts",
@@ -16,11 +17,13 @@
   "dependencies": {
     "@mantine/core": "9.7.3",
     "@mantine/hooks": "9.7.3",
+    "@tauri-apps/api": "2.12.5",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
+    "@tauri-apps/cli": "2.12.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "typescript": "5.9.3",

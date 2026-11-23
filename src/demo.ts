@@ -1,10 +1,10 @@
-import type { Backend, Snapshot } from './api.ts';
+import type { DemoBackend, Snapshot } from './api.ts';
 import { AppError, validateDraft, type Draft, type Mount } from './model.ts';
 
 export const scenarios = ['ready', 'empty', 'setup', 'upload', 'network', 'read-error', 'install-error', 'restart'] as const;
 export type Scenario = typeof scenarios[number];
 
-export function createDemoBackend(scenario: Scenario = 'ready', delayMs = 350): Backend {
+export function createDemoBackend(scenario: Scenario = 'ready', delayMs = 350): DemoBackend {
   const mounts: Mount[] = scenario === 'empty' || scenario === 'setup' ? [] : [
     { id: 'example-x', connection: { kind: 'webdav', url: 'https://dav.example.com/dav/', username: '' }, target: { kind: 'driveLetter', value: 'X:' }, readOnly: false, mounted: true },
     { id: 'example-y', connection: { kind: 'webdav', url: 'https://nas.example.com/webdav/documents/', username: '' }, target: { kind: 'driveLetter', value: 'Y:' }, readOnly: true, mounted: false },
@@ -41,6 +41,7 @@ export function createDemoBackend(scenario: Scenario = 'ready', delayMs = 350): 
     return { kind: draft.kind, url: draft.url, username: draft.username };
   }
   return {
+    mode: 'demo',
     async snapshot(): Promise<Snapshot> {
       await wait();
       if (scenario === 'read-error' && readAttempts++ === 0) throw new AppError('status_unavailable');

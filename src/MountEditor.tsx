@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { AppError, draftFor, validateDraft, type Draft, type Mount } from './model.ts';
 import { errorText, translator, type Language } from './i18n.ts';
 
-export type Editor = { mode: 'new' | 'edit' | 'reconnect'; mount?: Mount };
+export type Editor = { mode: 'new' | 'edit' | 'reconnect' | 'prepare'; mount?: Mount };
 export function MountEditor({ editor, drives, language, onSave, onCancel, onBusy }: {
   editor: Editor; drives: string[]; language: Language;
   onSave: (draft: Draft) => Promise<void>; onCancel: () => void; onBusy: (busy: boolean) => void;
@@ -46,9 +46,9 @@ export function MountEditor({ editor, drives, language, onSave, onCancel, onBusy
         </Accordion.Panel></Accordion.Item>
       </Accordion>
       {error !== null && <Alert color="red">{errorText(error, language)}</Alert>}
-      {busy && <Text role="status" size="sm">{editor.mode === 'edit' ? t('save') : t('mounting')}…</Text>}
+      {busy && <Text role="status" size="sm">{t(editor.mode === 'prepare' ? 'checkingConnection' : editor.mode === 'edit' ? 'save' : 'mounting')}…</Text>}
       <Group justify="flex-end" gap={8}>
-        <Button type="submit" disabled={busy || !options.length}>{editor.mode === 'edit' ? t('save') : t('connect')}</Button>
+        <Button type="submit" disabled={busy || !options.length}>{t(editor.mode === 'prepare' ? 'saveConfiguration' : editor.mode === 'edit' ? 'save' : 'connect')}</Button>
         <Button type="button" variant="default" onClick={onCancel} disabled={busy}>{t('cancel')}</Button>
       </Group>
     </Stack>
